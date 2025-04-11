@@ -1,0 +1,297 @@
+@{
+    ViewData["Title"] = "Shop";
+}
+
+<link rel="stylesheet" href="~/css/products.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+<div class="container mt-4 mb-5">
+    <!-- Header with category and sort -->
+    <div class="header-info">
+        <h1 class="category-title">Casual</h1>
+        <div class="d-flex align-items-center">
+            <div class="showing-info me-4" id="showing-info">Showing 1-10 of 100 Products</div>
+            <div class="sort-dropdown">
+                <label for="sortSelect">Sort by:</label>
+                <select class="form-select form-select-sm" id="sortSelect">
+                    <option selected>Most Popular</option>
+                    <option>Price: Low to High</option>
+                    <option>Price: High to Low</option>
+                    <option>Newest</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading spinner -->
+    <div id="loading" class="text-center d-none">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Đang tải...</span>
+        </div>
+    </div>
+
+    <!-- Error message -->
+    <div id="errorMessage" class="alert alert-danger d-none" role="alert">
+        Không thể tải dữ liệu. Vui lòng thử lại sau.
+    </div>
+
+    <!-- Product grid -->
+    <div id="product-list" class="product-grid">
+        <!-- Products will be loaded here -->
+    </div>
+
+    <!-- Pagination -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+        <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" id="prevPageBtn">
+            <i class="fas fa-chevron-left me-2"></i> Previous
+        </button>
+        
+        <ul class="pagination" id="pagination">
+            <!-- Pagination will be added here -->
+        </ul>
+        
+        <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" id="nextPageBtn">
+            Next <i class="fas fa-chevron-right ms-2"></i>
+        </button>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Global variables
+        let currentPage = 1;
+        let pageSize = 6; // Products per page
+        let totalPages = 0;
+        let totalItems = 0;
+
+        // Function to render star rating
+        function renderStars(rating) {
+            const fullStars = Math.floor(rating);
+            const halfStar = rating % 1 >= 0.5;
+            const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+            
+            let stars = '';
+            
+            // Add full stars
+            for (let i = 0; i < fullStars; i++) {
+                stars += '<i class="fas fa-star"></i>';
+            }
+            
+            // Add half star if needed
+            if (halfStar) {
+                stars += '<i class="fas fa-star-half-alt"></i>';
+            }
+            
+            // Add empty stars
+            for (let i = 0; i < emptyStars; i++) {
+                stars += '<i class="far fa-star"></i>';
+            }
+            
+            return stars;
+        }
+
+        // Load products function
+        function loadProducts(page = 1) {
+            // Show loading spinner
+            $('#loading').removeClass('d-none');
+            
+            // Hide error message if any
+            $('#errorMessage').addClass('d-none');
+            
+            // Save current page
+            currentPage = page;
+            
+            // Call API to get data
+            $.ajax({
+                url: '/api/products',
+                type: 'GET',
+                data: {
+                    page: page,
+                    pageSize: pageSize
+                },
+                success: function (data) {
+                    // Update UI with new data
+                    displayProducts(data);
+                    
+                    // Update pagination
+                    updatePagination(data);
+                    
+                    // Update showing info
+                    updateShowingInfo(data);
+                    
+                    // Hide loading spinner
+                    $('#loading').addClass('d-none');
+                },
+                error: function (xhr, status, error) {
+                    // Show error message
+                    $('#errorMessage').removeClass('d-none').text('Could not load data: ' + error);
+                    
+                    // Hide loading spinner
+                    $('#loading').addClass('d-none');
+                    
+                    console.error('AJAX error:', error);
+                }
+            });
+        }
+
+        // Function to display products
+        function displayProducts(data) {
+            const productList = $('#product-list');
+            
+            // Clear old list
+            productList.empty();
+            
+            // Check if no products
+            if (data.items.length === 0) {
+                productList.html('<div class="col-12 text-center"><p>No products found.</p></div>');
+                return;
+            }
+            
+            // Save total items and pages
+            totalItems = data.totalItems;
+            totalPages = data.totalPages;
+            
+            // Add new products
+            data.items.forEach(function (product) {
+                const priceHtml = product.originalPrice 
+                    ? `<span>$${product.price}</span> <span class="original-price">$${product.originalPrice}</span> <span class="discount-badge">-${product.discountPercent}%</span>`
+                    : `<span>$${product.price}</span>`;
+                
+                const productCard = `
+                    <div class="product-card">
+                        <img src="${product.imageUrl || '/images/placeholder.png'}" alt="${product.name}" class="product-image">
+                        <div class="product-info">
+                            <h3 class="product-title">${product.name}</h3>
+                            <div class="rating">
+                                <div class="rating-stars">${renderStars(product.rating)}</div>
+                                <span class="rating-count">${product.rating.toFixed(1)}/5</span>
+                            </div>
+                            <div class="product-price">
+                                ${priceHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                productList.append(productCard);
+            });
+        }
+
+        // Function to update showing info
+        function updateShowingInfo(data) {
+            const start = (data.page - 1) * data.pageSize + 1;
+            const end = Math.min(start + data.items.length - 1, data.totalItems);
+            $('#showing-info').text(`Showing ${start}-${end} of ${data.totalItems} Products`);
+        }
+
+        // Function to update pagination
+        function updatePagination(data) {
+            const pagination = $('#pagination');
+            
+            // Clear old pagination
+            pagination.empty();
+            
+            // Update total pages
+            totalPages = data.totalPages;
+            
+            // Ensure previous/next buttons are updated
+            $('#prevPageBtn').prop('disabled', currentPage === 1);
+            $('#nextPageBtn').prop('disabled', currentPage === totalPages);
+            
+            // If only one page, hide pagination
+            if (totalPages <= 1) {
+                pagination.addClass('d-none');
+                return;
+            } else {
+                pagination.removeClass('d-none');
+            }
+            
+            // Add numeric page buttons
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            
+            // Adjust startPage if endPage reaches limit
+            if (endPage === totalPages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            
+            // Add first page if needed
+            if (startPage > 1) {
+                pagination.append(`<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>`);
+                
+                if (startPage > 2) {
+                    pagination.append(`<li class="page-item disabled"><span class="page-link">...</span></li>`);
+                }
+            }
+            
+            // Add numeric page buttons
+            for (let i = startPage; i <= endPage; i++) {
+                const pageButton = `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `;
+                pagination.append(pageButton);
+            }
+            
+            // Add last page if needed
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    pagination.append(`<li class="page-item disabled"><span class="page-link">...</span></li>`);
+                }
+                
+                pagination.append(`<li class="page-item"><a class="page-link" href="#" data-page="${totalPages}">${totalPages}</a></li>`);
+            }
+        }
+
+        // Handle events when page is loaded
+        $(document).ready(function () {
+            // Load initial data
+            loadProducts();
+            
+            // Handle pagination click events
+            $(document).on('click', '.pagination .page-link', function (e) {
+                e.preventDefault();
+                
+                // Check if button is disabled or active
+                if ($(this).parent().hasClass('disabled') || $(this).parent().hasClass('active')) {
+                    return;
+                }
+                
+                // Get page from data-page attribute
+                const page = parseInt($(this).data('page'));
+                
+                // Load data for selected page
+                loadProducts(page);
+                
+                // Scroll to top of product list
+                $('html, body').animate({
+                    scrollTop: $('#product-list').offset().top - 20
+                }, 300);
+            });
+            
+            // Handle prev/next button clicks
+            $('#prevPageBtn').click(function(e) {
+                e.preventDefault();
+                if (currentPage > 1) {
+                    loadProducts(currentPage - 1);
+                }
+            });
+            
+            $('#nextPageBtn').click(function(e) {
+                e.preventDefault();
+                if (currentPage < totalPages) {
+                    loadProducts(currentPage + 1);
+                }
+            });
+            
+            // Handle sort change
+            $('#sortSelect').change(function() {
+                // Here you could add sorting functionality
+                // For now, just reload page 1
+                loadProducts(1);
+            });
+        });
+    </script>
+}
